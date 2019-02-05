@@ -13,7 +13,6 @@ from email.mime.text import MIMEText            # Email
 from email.mime.base import MIMEBase            # Email
 from email import encoders                      # Email
 #import socks                                    # proxy
-import sys                                      # Lidar com Erros
 
 #                   To do
 #   1 - TIRAR AS CREDENCIAIS DO MEIO DO SCRIPT !!!
@@ -54,8 +53,8 @@ def log_config():
             datefmt='%d/%m/%Y %H:%M:%S',
             level=logging.DEBUG)
 
-    logging.debug('logging.config definida')
-    logging.debug('Caminho definido para {}'.format(access_db_path))
+    logging.debug('logging.config set')
+    logging.info('Caminho definido para {}'.format(access_db_path))
 
 
 #############################
@@ -158,6 +157,9 @@ def main():
     logging.info('Pegando cópias...')
     copies_list = get_files(True)  # get_backup = True
 
+    # Necessário porque se não o python cria uma nova variavel
+    global delete_copy_fail
+
     if not copies_list:
         delete_copy_fail = True
     else:
@@ -168,7 +170,8 @@ def main():
         if delete_copies(copies_list):
             logging.debug('Cópias deletadas')
         else:
-             logging.warning('Houve um erro durante a exclusão das cópias')           
+             logging.warning('Houve um erro durante a exclusão das cópias')
+             delete_copy_fail = True
     else:
         logging.warning('Devido à um erro, não foi possivel encontrar as cópias')
         
@@ -282,7 +285,7 @@ def copia(file_list):
                 continue
         
             # Remove o .accdb do final, adiciona '_BACKUP_data_de_hoje.accdb' no arquivo
-            logging.debug('Making copy of {}'.format(file))
+            logging.debug('Making copy of \'{}\''.format(file))
             shutil.copyfile(file, file.replace('.accdb', backup_str))
             logging.debug('Copy \'{}\' created'.format(file.replace('.accdb', backup_str)))
             
@@ -342,10 +345,11 @@ def blocked_check(files_list):
             # Se não conseguir, está sendo usado
             os.rename(file, file)
     except IOError:
-        logging.debug('File {} is blocked'.format(file))
+        logging.debug('end of blocked_check()')
         logging.exception('EXCEPTION OCCURED')
         return file
-    
+
+    logging.debug('end of blocked_check()')
     return None
 
 
@@ -369,17 +373,17 @@ def compact_repair():
 
         # Ira ignorar as cópias feitas anteriormente    
         if file.endswith(backup_str):
-            logging.debug('Skipping file \'{}\''.format(file))
+            logging.debug('SKIPPING FILE \'{}\''.format(file.replace(access_db_path + '\\', '')))
             continue
 
         # Backup obrigatório do arquivo para se executar o compact and repair
-        logging.debug('Making tmp: \'{}\''.format(bkfile))
+        logging.debug('Making tmp file')
         bkfile = file.replace('.accdb', 'bk.accdb')
-        logging.debug('Made')
+        logging.debug('tmp file is \'{}\''.format(bkfile.replace(access_db_path + '\\', '')))
 
         # Compact and Repair
         try:
-            logging.debug('Trying to repair \'{}\''.format(file))
+            logging.debug('Trying to repair \'{}\''.format(file.replace(access_db_path + '\\', '')))
             db.compactRepair(file, bkfile, False)
             logging.debug('Repaired')
         except Exception:
@@ -467,15 +471,18 @@ def zipar(file_list):
 #   Work in Progress    #
 #########################
     
-def send_mail(assunto, body, log = None):
+def send_mail(assunto, body, log = None, fail = False):
     logging.debug('send_mail()')
     
-    logging.warning("O Script encontrou um erro e irá mandar um email contendo as informações do erro")
+    # logging.warning("O Script encontrou um erro e irá mandar um email contendo as informações do erro")
+    if fail:
+        body += '. Também houve um erro durante a exclusão das cópias dos arquivos'
 
     de = 'exemplo@gmail.com'
     para = 'exemplo@gmail.com'
-
-    # Definição do corpo do email
+    corpo = body
+    
+    # Definição do email
     email = MIMEMultipart()
 
     # De
@@ -488,16 +495,13 @@ def send_mail(assunto, body, log = None):
     email['Subject'] = assunto
     logging.debug('Subject set to \'{}\''.format(assunto))
 
-    # corpo do email
-    corpo = body
+
+    # Adiciona o corpo do email
+    email.attach(MIMEText(corpo))
     logging.debug('Body set')
 
-    # Adiciona body no email
-    email.attach(MIMEText(corpo))
-    logging.debug('Attached body to email')
-
     # Caso não haja .log para ser anexado
-    # Ele irá pular esse bloco
+    # Esse bloco será ignorado
     if log:
         # anexo do .log
         anexo = open(log, 'r')
@@ -544,23 +548,23 @@ if __name__ == '__main__':
 
 
 #    if return_value == 1:
- #       send_mail('SCRIPT DE LIMPEZA: Diretório vazio', 'O diretório digitado no início do script não contem arquivos .accdb', log)
-  #  elif return_value == 2:
-   #     send_mail('SCRIPT DE LIMPEZA: Arquivo bloqueado', 'Durante o check de arquivos bloqueados o script encontrou um arquivo bloqueado e abortou', log)
-    #elif return_value == 3:
-    #    send_mail('SCRIPT DE LIMPEZA: Não foi possível criar um backup', 'Durante a cópia dos arquivos houve um erro e não foi possível criar uma cópia', log)
-    #elif return_value == 4:
-    #    send_mail('SCRIPT DE LIMPEZA: URGENTE: ERRO DURANTE O COMPACT AND REPAIR', 'Houve um erro durante a execução do compact and repair e ele não pode completar.\nDurante o processo de substituição dos arquivos corrompidos por seus backups, as cópias não foram encontradas e o script abortou para evitar maiores perdas', log)
-    #elif return_value == 5:
-    #    send_mail('SCRIPT DE LIMPEZA: Erro durante o compact and repair', 'Houve um erro durante o processo de limpeza dos arquivos e ele teve que abortar inesperadamente. Os arquivos foram substituidos por suas cópias feitas antes da limpeza dos arquivos', log)
-    #elif return_value == 6:
-    #    send_mail('SCRIPT DE LIMPEZA: Arquivos não foram encontrados', 'O script não conseguiu encontrar os arquivos após a limpeza e abortou', log)
-    #elif return_value == 7:
-    #    send_mail('SCRIPT DE LIMPEZA: Não foi possível compactar os arquivos', 'Devido a algum erro, não foi possível compactar os arquivos limpos. O script abortou', log)
-    #elif return_value == 8:
-    #    send_mail('SCRIPT DE LIMPEZA: Algum arquivo ficou bloqueado durante a compactação', 'Durante a compactação do script, algum arquivo ficou bloqueado (aberto) e não foi possivel compacta-los', log)
-    #else:
-    #    logging.info('O script conseguiu completar sem nenhum problema')
+#        send_mail('SCRIPT DE LIMPEZA: Diretório vazio', 'O diretório digitado no início do script não contem arquivos .accdb', log)
+#    elif return_value == 2:
+#        send_mail('SCRIPT DE LIMPEZA: Arquivo bloqueado', 'Durante o check de arquivos bloqueados o script encontrou um arquivo bloqueado e abortou', log)
+#    elif return_value == 3:
+#        send_mail('SCRIPT DE LIMPEZA: Não foi possível criar um backup', 'Durante a cópia dos arquivos houve um erro e não foi possível criar uma cópia', log)
+#    elif return_value == 4:
+#        send_mail('SCRIPT DE LIMPEZA: URGENTE: ERRO DURANTE O COMPACT AND REPAIR', 'Houve um erro durante a execução do compact and repair e ele não pode completar.\nDurante o processo de substituição dos arquivos corrompidos por seus backups, as cópias não foram encontradas e o script abortou para evitar maiores perdas', log)
+#    elif return_value == 5:
+#        send_mail('SCRIPT DE LIMPEZA: Erro durante o compact and repair', 'Houve um erro durante o processo de limpeza dos arquivos e ele teve que abortar inesperadamente. Os arquivos foram substituidos por suas cópias feitas antes da limpeza dos arquivos', log)
+#    elif return_value == 6:
+#        send_mail('SCRIPT DE LIMPEZA: Arquivos não foram encontrados', 'O script não conseguiu encontrar os arquivos após a limpeza e abortou', log)
+#    elif return_value == 7:
+#        send_mail('SCRIPT DE LIMPEZA: Não foi possível compactar os arquivos', 'Devido a algum erro, não foi possível compactar os arquivos limpos. O script abortou', log)
+#    elif return_value == 8:
+#        send_mail('SCRIPT DE LIMPEZA: Algum arquivo ficou bloqueado durante a compactação', 'Durante a compactação do script, algum arquivo ficou bloqueado (aberto) e não foi possivel compacta-los', log)
+#    else:
+#        logging.info('O script conseguiu completar sem nenhum problema')
 
 logging.info('=' * 20 + ' Fim do Script ' + '=' * 20)
 logging.shutdown()
