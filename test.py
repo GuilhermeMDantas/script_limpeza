@@ -3,6 +3,7 @@
 import os, os.path                              # Diretórios e arquivos
 import shutil                                   # Cópia de segurança antes dos procedimentos
 import win32com.client                          # Execução do compact and repair
+import time
 import glob                                     # Auxilia a execução do compact and repair
 import zipfile                                  # Zipar/Compactar
 import logging                                  # Logs
@@ -35,9 +36,9 @@ while flag:
         continue
     flag = False
 
-data_de_hoje = str(datetime.now().date().strftime("%d-%m-%Y"))  # Auxílio
-backup_str = '_BACKUP_' + data_de_hoje + '.accdb'               # Auxílio
-delete_copy_fail = False                                        # Auxílio
+data_de_hoje = str(datetime.now().date().strftime("%d-%m-%Y"))  # Data de Hoje
+bk_str = '_BACKUP_'                                             # Praticidade
+delete_copy_fail = False                                        # Caso falhe a remoção das cópias
 
 #####################################################
 #                                                   #
@@ -68,11 +69,13 @@ def main():
     # verifica se há arquivos .accdb no diretório
     logging.info('Encontrando arquivos...')
     file_list = get_files()
+    
 
     if not file_list:
-        logging.warning('Não há arquivos .accdb no diretório')
+        logging.warning('Não há arquivos .accdb ou .mdb no diretório')
         return 1  # Identificador de erro
     logging.info('Arquivos adicionados na lista')
+    
             
     #####################################################
     #                                                   #
@@ -88,6 +91,7 @@ def main():
 
     logging.info('Nenhum arquivo está bloqueado')
 
+
     #############################################
     #                                           #
     #   Faz uma cópia dos arquivos encontrados  #
@@ -100,6 +104,7 @@ def main():
     else:
         logging.error('Não foi possível fazer cópias dos arquivos')
         return 3  # Identificador de erro
+
 
     #############################
     #                           #
@@ -114,6 +119,8 @@ def main():
     else:
         logging.critical("Ocorreu um erro durante o processo de limpeza")
         logging.critical("Os Arquivos serão substituídos pelas cópias")
+        ######################
+        return
         
         # Pega todos as cópias feitas antes do processo de limpeza e joga nessa lista
         lista_de_backup = get_files(True)  # get_backup = True
@@ -130,23 +137,23 @@ def main():
         # Remove TODOS os arquivos não _BACKUP_ e .accdb da pasta e substitui pelas cópias
         for file in file_list:
             # Primeiro pula os backups
-            if file.endswith(backup_str):
+            if file.endswith(bk_str):
                 continue
 
             # Deleta o arquivo
-            logging.debug('Deletando arquivo \'{}\''.format(file))
+            logging.debug('Deleting file \'{}\''.format(file))
             os.remove(file)
 
             # Renomeia o backup para o nome original do arquivo
             for backup in lista_de_backup:
-                if backup.replace(backup_str, '.accdb') == file:
+                if backup.replace(bk_str, '') == file:
                     logging.debug('Renomeando \'{}\' para \'{}\''.format(backup, file))
                     os.rename(backup, file)
 
         logging.info('Arquivos substituídos com sucesso')
         return 5  # Identificador do erro
 
-
+    return
     #####################################################################
     #                                                                   #
     #   Exclui as cópias feitas após uma limpeza concluída com sucesso  #
@@ -225,7 +232,7 @@ def main():
 #                                                               #
 #################################################################
 
-def get_files(get_backup = False, extension = ".accdb"):
+def get_files(get_backup = False):
     logging.debug('get_files()')
 
     # Adiciona os arquivos na lista
@@ -235,19 +242,19 @@ def get_files(get_backup = False, extension = ".accdb"):
         logging.debug('get regular files')
         file_list = [file
                     for file in os.listdir()
-                        # Para garantir que é um arquivo .accdb
-                        if file.endswith(extension)
+                        # Para garantir que é um arquivo .accdb ou .mdb
+                        if file.endswith('.accdb') or file.endswith('.mdb')
                             # Para garantir que NÃO é um _BACKUP_
-                            if not file.endswith(backup_str)
+                            if not file.endswith(bk_str + '.accdb') and not file.endswith(bk_str + '.mdb')
                     ]
     else: # Pegar backups
         logging.debug('get backups')
         file_list = [backup
                      for backup in os.listdir()
                         # Para garantir que é um arquivo .accdb
-                        if backup.endswith(extension)
+                        if backup.endswith('.accdb') or backup.endswith('.mdb')
                             # Para garantir que É um _BACKUP_
-                            if backup.endswith(backup_str)
+                            if backup.endswith(bk_str + '.accdb') or backup.endswith(bk_str + '.mdb')
                      ]
 
     # Sem {extension} no diretorio
@@ -278,16 +285,29 @@ def copia(file_list):
     
     try:
         for file in file_list:
+            # Irá ignorar o arquivo se uma cópia dele já existir
+            if file.endswith('.accdb'):
+                new_file = file.replace('.accdb', bk_str + '.accdb')
+                
+                if os.path.exists(file.replace('.accdb', bk_str + '.accdb')):
+                    logging.debug('Backup for \'{}\' already exists. Skipping'.format(file))
+                    continue
 
-            # Irá ignorar backups (não irá fazer um backup do backup)
-            if file.endswith(backup_str):
-                logging.debug('skipping backup \'{}\''.format(file))
-                continue
+            elif file.endswith('.mdb'):
+                new_file = file.replace('.mdb', bk_str + '.mdb')
+                
+                if os.path.exists(file.replace('.mdb', bk_str + '.mdb')):
+                    logging.debug('Backup for \'{}\' already exists. Skipping'.format(file))
+                    continue
         
-            # Remove o .accdb do final, adiciona '_BACKUP_data_de_hoje.accdb' no arquivo
+            # Remove o .accdb ou .mdb do final, adiciona '_BACKUP_.extensão' no arquivo
             logging.debug('Making copy of \'{}\''.format(file))
-            shutil.copyfile(file, file.replace('.accdb', backup_str))
-            logging.debug('Copy \'{}\' created'.format(file.replace('.accdb', backup_str)))
+            if file.endswith('.accdb'):
+                shutil.copyfile(file, new_file)
+                logging.debug('Copy \'{}\' created'.format(file.replace('.accdb', bk_str + '.accdb')))
+            elif file.endswith('.mdb'):
+                shutil.copyfile(file, new_file)
+                logging.debug('Copy \'{}\' created'.format(file.replace('.mdb', bk_str + '.mdb')))
             
     except Exception:
         # Se de alguma forma, o if acima nao conseguir pegar algum arquivo repetido
@@ -310,15 +330,33 @@ def copia(file_list):
 
 def isBlocked(file_list):
     logging.debug('isBlocked()')
+
+    # Cria instância do Access
+    logging.debug('Creating Access instance')
+    access_instance = win32com.client.Dispatch('Access.Application')
     
     # A função que é chamada no main()
-    logging.debug('calling blocked_check()')
-    blocked = blocked_check(file_list)
+    for file in file_list:
 
-    if blocked:
-        logging.error('O arquivo \'{}\' está bloqueado'.format(blocked))
-        logging.debug('end of isBlocked()')
-        return True
+        # Coloca o caminho completo do arquivo
+        file = access_db_path + '\\' + file
+
+        # Chama a blocked check(file) para testar se o arquivo tem senha/pode ser aberto
+        logging.debug('calling blocked_check()')
+        if blocked_check(file, access_instance):
+            # Access não está aberto
+            continue
+        else:
+            # Access já está aberto
+            # Desvincula a variavel do Access Object
+            access_instance = None
+            return False
+    
+
+    # Fecha a instância do Access que foi aberta na checagem
+    access_instance.Application.Quit(2)
+    # Desvincula a variavel do Access Object
+    access_instance = None
 
     logging.debug('end of isBlocked()')
     return False
@@ -331,26 +369,25 @@ def isBlocked(file_list):
 #                                       #
 #########################################
 
-def blocked_check(files_list):
+def blocked_check(file, access_instance):
     logging.debug('blocked_check()')
-    
-    # Checa se algum arquivo está bloqueado (aberto)
-    # Caso sim, retorna {arquivo} (logging)
-    # Caso não, retorna None
-    
+
     try:
-        for file in files_list:
-            # Tenta renomear a database
-            # Se conseguir, não está sendo usado
-            # Se não conseguir, está sendo usado
-            os.rename(file, file)
-    except IOError:
+        # Tenta abrir a database
+        logging.debug('Checking if \'{}\' is blocked...'.format(file))        
+        access_instance.Application.OpenCurrentDatabase(file)
+        logging.debug('Database sucessfully opened.')
+        
+        logging.debug('Closing database...')
+        access_instance.Application.CloseCurrentDatabase()
+        logging.debug('Closed')
+    except Exception:
         logging.debug('end of blocked_check()')
-        logging.exception('EXCEPTION OCCURED')
-        return file
+        logging.exception('Access está aberto')
+        return False
 
     logging.debug('end of blocked_check()')
-    return None
+    return True
 
 
 #########################################################
@@ -368,32 +405,66 @@ def compact_repair():
     db = win32com.client.Dispatch('Access.Application')
     logging.debug('Created')
     
-    # Executa o compact and repair em todos arquivos
+    # Executa o compact and repair em todos arquivos .accdb
+    logging.debug('STARTING .ACCDB CLEANING')
     for file in glob.glob(access_db_path + '\\*.accdb'):
 
-        # Ira ignorar as cópias feitas anteriormente    
-        if file.endswith(backup_str):
+        # Ira ignorar as cópias feitas anteriormente
+        if file.endswith(bk_str + '.accdb'):
             logging.debug('SKIPPING FILE \'{}\''.format(file.replace(access_db_path + '\\', '')))
             continue
 
         # Backup obrigatório do arquivo para se executar o compact and repair
         logging.debug('Making tmp file')
-        bkfile = file.replace('.accdb', 'bk.accdb')
-        logging.debug('tmp file is \'{}\''.format(bkfile.replace(access_db_path + '\\', '')))
+        new_file = file.replace('.accdb', 'teste.accdb')
+        #logging.debug('tmp file is \'{}\''.format(new_file.replace(access_db_path + '\\', '')))
 
         # Compact and Repair
         try:
             logging.debug('Trying to repair \'{}\''.format(file.replace(access_db_path + '\\', '')))
-            db.compactRepair(file, bkfile, False)
+            db.CompactRepair(file, new_file, False)
             logging.debug('Repaired')
         except Exception:
             logging.debug('end of compact_repair()')
             logging.exception('EXCEPTION OCCURED')
             return False
 
-        # Remove o backup obrigatorio pelo fato de já haver um
+        # Substitui o arquivo compactado com o original
+        # E deleta o arquivo criado no processo
         logging.debug('Deleting tmp copy')
-        os.remove(bkfile)
+        shutil.copyfile(new_file, file)
+        os.remove(new_file)
+        logging.debug('Deleted')
+
+    # Executa o compact and repair em todos os arquivos .mdb
+    logging.debug('STARTING .MDB CLEANING')
+    for file in glob.glob(access_db_path + '\\*.mdb'):
+
+        # Ira ignorar as cópias feitas anteriormente
+        if file.endswith(bk_str + '.mdb'):
+            logging.debug('SKIPPING FILE \'{}\''.format(file.replace(access_db_path + '\\', '')))
+            continue
+
+        # Backup obrigatório do arquivo para se executar o compact and repair
+        logging.debug('Making tmp file')
+        new_file = file.replace('.mdb', 'teste.mdb')
+        #logging.debug('tmp file is \'{}\''.format(new_file.replace(access_db_path + '\\', '')))
+
+        # Compact and Repair
+        try:
+            logging.debug('Trying to repair \'{}\''.format(file.replace(access_db_path + '\\', '')))
+            db.CompactRepair(file, new_file, False)
+            logging.debug('Repaired')
+        except Exception:
+            logging.debug('end of compact_repair()')
+            logging.exception('EXCEPTION OCCURED')
+            return False
+
+        # Substitui o arquivo compactado com o original
+        # E deleta o arquivo criado no processo
+        logging.debug('Deleting tmp copy')
+        shutil.copyfile(new_file, file)
+        os.remove(new_file)
         logging.debug('Deleted')
         
 
@@ -537,11 +608,45 @@ def send_mail(assunto, body, log = None, fail = False):
 
     return
 
+def print_members(obj, obj_name="placeholder_name"):
+    """Print members of given COM object"""
+    try:
+        fields = list(obj._prop_map_get_.keys())
+    except AttributeError:
+        print("Object has no attribute '_prop_map_get_'")
+        print("Check if the initial COM object was created with"
+              "'win32com.client.gencache.EnsureDispatch()'")
+        raise
+    methods = [m[0] for m in getmembers(obj) if (not m[0].startswith("_")
+                                                 and "clsid" not in m[0].lower())]
+
+    if len(fields) + len(methods) > 0:
+        print("Members of '{}' ({}):".format(obj_name, obj))
+    else:
+        raise ValueError("Object has no members to print")
+
+    print("\tFields:")
+    if fields:
+        for field in fields:
+            print(f"\t\t{field}")
+    else:
+        print("\t\tObject has no fields to print")
+
+    print("\tMethods:")
+    if methods:
+        for method in methods:
+            print(f"\t\t{method}")
+    else:
+        print("\t\tObject has no methods to print")
+
 if __name__ == '__main__':
     log_config()
 
     logging.info('Começando script...')
     return_value = main()
+
+    #db = win32com.client.gencache.EnsureDispatch('Excel.Application')
+    #print_members(db)
     
 
     log = data_de_hoje + ' cleaning.log'
