@@ -52,7 +52,7 @@ def log_config():
             filemode='w+',
             format='%(asctime)s - %(levelname)-8s:: %(message)s',
             datefmt='%d/%m/%Y %H:%M:%S',
-            level=logging.DEBUG)
+            level=logging.INFO)
 
     logging.debug('logging.config set')
     logging.info('Caminho definido para {}'.format(access_db_path))
@@ -72,7 +72,7 @@ def main():
     
 
     if not file_list:
-        logging.warning('Não há arquivos .accdb ou .mdb no diretório')
+        logging.error('Não há arquivos .accdb ou .mdb no diretório')
         return 1  # Identificador de erro
     logging.info('Arquivos adicionados na lista')
     
@@ -86,7 +86,7 @@ def main():
     # Checa se algum dos arquivos na lista está sendo usado por outro programa
     logging.info('Verificando por arquivos bloqueados...')
     if isBlocked(file_list):
-        # Logging foi feito na função
+        logging.error('Access já está aberto')
         return 2  # Identificador de erro
 
     logging.info('Nenhum arquivo está bloqueado')
@@ -118,24 +118,25 @@ def main():
         logging.info('Os arquivos foram limpos com sucesso')
     else:
         logging.critical("Ocorreu um erro durante o processo de limpeza")
-        logging.critical("Os Arquivos serão substituídos pelas cópias")
-        ######################
-        return
+        logging.critical("Os Arquivos serão substituídos pelas cópias")        
         
         # Pega todos as cópias feitas antes do processo de limpeza e joga nessa lista
+        logging.info('Procurando pelos backups...')
         lista_de_backup = get_files(True)  # get_backup = True
-
-        # O script não deveria ter chegado até aqui caso não houvessem backups, mas no caso dele chegar
-        # Ele irá verificar se tem algum backup na lista de backups
+        
+        # O script NÃO deveria ter chegado até aqui caso não houvessem backups, mas caso isso aconteça
+        # Ele irá garantir que há backups que possam ser usados
         # E caso não irá abortar para garantir que os arquivos, mesmo corrompidos, não sejam deletados
         if not lista_de_backup:
             logging.critical('Não foram encontrados backups')
             logging.critical('Para evitar maiores perdas, o script irá abortar sem substituir os arquivos')
             return 4
+        logging.info('Backups encontrados')
         
-
         # Remove TODOS os arquivos não _BACKUP_ e .accdb da pasta e substitui pelas cópias
+        logging.info('Deletando arquivos corrompidos...')
         for file in file_list:
+            
             # Primeiro pula os backups
             if file.endswith(bk_str):
                 continue
@@ -143,17 +144,19 @@ def main():
             # Deleta o arquivo
             logging.debug('Deleting file \'{}\''.format(file))
             os.remove(file)
+            logging.debug('Deleted')
 
             # Renomeia o backup para o nome original do arquivo
             for backup in lista_de_backup:
                 if backup.replace(bk_str, '') == file:
-                    logging.debug('Renomeando \'{}\' para \'{}\''.format(backup, file))
+                    logging.debug('Renaming \'{}\' to \'{}\''.format(backup, file))
                     os.rename(backup, file)
-
-        logging.info('Arquivos substituídos com sucesso')
+        
+        logging.info('Arquivos corrompidos deletados.')
+        logging.info('Arquivos corrompidos foram substituídos por seus backups')
         return 5  # Identificador do erro
+    
 
-    return
     #####################################################################
     #                                                                   #
     #   Exclui as cópias feitas após uma limpeza concluída com sucesso  #
@@ -163,7 +166,7 @@ def main():
     # Pega as cópias
     logging.info('Pegando cópias...')
     copies_list = get_files(True)  # get_backup = True
-
+    
     # Necessário porque se não o python cria uma nova variavel
     global delete_copy_fail
 
@@ -174,15 +177,17 @@ def main():
     
     # Exclui as cópias
     if not delete_copy_fail:
+        logging.info('Deletando cópias...')
         if delete_copies(copies_list):
-            logging.debug('Cópias deletadas')
+            logging.info('Cópias deletadas')
         else:
-             logging.warning('Houve um erro durante a exclusão das cópias')
+             logging.error('Houve um erro durante a exclusão das cópias')
              delete_copy_fail = True
     else:
         logging.warning('Devido à um erro, não foi possivel encontrar as cópias')
         
-
+        
+    
     #####################################################################
     #                                                                   #
     #   Adiciona os arquivos, agora limpos, na lista para compactar     #
@@ -199,9 +204,10 @@ def main():
     file_list = get_files()
 
     if not file_list:
-        logging.error('Devido à um erro não foi possível encontrar os arquivos limpos')
+        logging.error('Devido à um erro não foi possível encontrar os arquivos')
         return 6  # Identificador de erro
     logging.info('Lista criada')
+    
 
     #################################
     #                               #
@@ -313,7 +319,7 @@ def copia(file_list):
         # Se de alguma forma, o if acima nao conseguir pegar algum arquivo repetido
         # A função irá retornar false devido a algum erro na hora da cópia
         logging.debug('end of copia()')
-        logging.exception('EXCEPTION OCCURED')
+        logging.exception('ALGO DEU ERRADO NA CRIAÇÃO DAS CÓPIAS')
         return False
 
     logging.debug('end of copia()')
@@ -354,9 +360,13 @@ def isBlocked(file_list):
     
 
     # Fecha a instância do Access que foi aberta na checagem
+    logging.debug('Closing Access instance')
     access_instance.Application.Quit(2)
+    logging.debug('Closed')
     # Desvincula a variavel do Access Object
+    logging.debug('Unlinking variable to the Access Object')
     access_instance = None
+    logging.debug('Unlinked')
 
     logging.debug('end of isBlocked()')
     return False
@@ -426,7 +436,7 @@ def compact_repair():
             logging.debug('Repaired')
         except Exception:
             logging.debug('end of compact_repair()')
-            logging.exception('EXCEPTION OCCURED')
+            logging.exception('ALGO DEU ERRADO DURANTE A LIMPEZA DAS DATABASES .accdb')
             return False
 
         # Substitui o arquivo compactado com o original
@@ -457,7 +467,7 @@ def compact_repair():
             logging.debug('Repaired')
         except Exception:
             logging.debug('end of compact_repair()')
-            logging.exception('EXCEPTION OCCURED')
+            logging.exception('ALGO DEU ERRADO DURANTE A LIMPEZA DAS DATABASES .mdb')
             return False
 
         # Substitui o arquivo compactado com o original
@@ -494,7 +504,7 @@ def delete_copies(copies_list):
             logging.debug('Deleted')
         except Exception:
             logging.debug('end of delete_copies()')
-            logging.exception('EXCEPTION OCCURED')
+            logging.exception('ALGO DEU ERRADO DURANTE A EXCLUSÃO DOS BACKUPS')
             return False
 
     logging.debug('end of delete_copies()')
@@ -608,45 +618,12 @@ def send_mail(assunto, body, log = None, fail = False):
 
     return
 
-def print_members(obj, obj_name="placeholder_name"):
-    """Print members of given COM object"""
-    try:
-        fields = list(obj._prop_map_get_.keys())
-    except AttributeError:
-        print("Object has no attribute '_prop_map_get_'")
-        print("Check if the initial COM object was created with"
-              "'win32com.client.gencache.EnsureDispatch()'")
-        raise
-    methods = [m[0] for m in getmembers(obj) if (not m[0].startswith("_")
-                                                 and "clsid" not in m[0].lower())]
-
-    if len(fields) + len(methods) > 0:
-        print("Members of '{}' ({}):".format(obj_name, obj))
-    else:
-        raise ValueError("Object has no members to print")
-
-    print("\tFields:")
-    if fields:
-        for field in fields:
-            print(f"\t\t{field}")
-    else:
-        print("\t\tObject has no fields to print")
-
-    print("\tMethods:")
-    if methods:
-        for method in methods:
-            print(f"\t\t{method}")
-    else:
-        print("\t\tObject has no methods to print")
 
 if __name__ == '__main__':
     log_config()
 
     logging.info('Começando script...')
     return_value = main()
-
-    #db = win32com.client.gencache.EnsureDispatch('Excel.Application')
-    #print_members(db)
     
 
     log = data_de_hoje + ' cleaning.log'
