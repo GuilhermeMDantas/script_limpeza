@@ -447,7 +447,7 @@ def zipar():
 
         # caminho completo para o arquivo
         caminho_completo = caminho + '\\' + arquivo
-        with zipfile.ZipFile("{}\\Backup {} -- {}".format(pasta_bk, arquivo.replace('.accdb', ''),str(datetime.now().date().strftime("%d-%m-%Y"))) + ".zip", 'w') as backup:
+        with zipfile.ZipFile("{}\\Backup {} -- {}".format(pasta_bk, arquivo.replace('.accdb', ''),str(datetime.now().date().strftime("%d-%m-%Y"))) + ".zip", 'w', zipfile.ZIP_DEFLATED) as backup:
 
             try:
                 logging.debug('Trying to compact \'{}\''.format(arquivo))
