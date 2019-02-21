@@ -27,7 +27,7 @@ from email import encoders                      # Email
 #########################################
 
 # .csv com os caminhos e arquivos
-with open(r'', newline='', encoding='utf8') as csvfile:
+with open(r'sprite_teste.csv', newline='', encoding='utf8') as csvfile:
     leitor = csv.reader(csvfile)
     dados_csv = list(leitor)
 
@@ -166,36 +166,24 @@ def main():
 
 def copia():
     logging.debug('copia()')
-
-    # Iterador
-    i = 0
     
     try:
         # Por caminho em caminhos
-        for caminho in db_path:
-
-            # Arquivos ordenados por linha
-            arquivo = arquivos[i]
-
-            # Pastas para bk ordenadas por linha
-            pasta_bk = bk_path[i]
+        for caminho, arquivo, pasta_bk in zip(db_path, arquivos, bk_path):
 
             # Definição do arquivo que vai ser salvo a cópia
+            caminho_completo = caminho + '\\' + arquivo
             arquivo_bk = pasta_bk + '\\' + arquivo
             # arquivo_bk = arquivo_bk.replace('.accdb', bk_str + '.accdb')
 
             # Remove o .accdb ou .mdb do final, adiciona '_BACKUP_.extensão' no arquivo
             logging.debug('Making copy of \'{}\''.format(arquivo))
             if arquivo.endswith('.accdb'):
-                shutil.copyfile(caminho + '\\' + arquivo, arquivo_bk)
+                shutil.copyfile(caminho_completo, arquivo_bk)
                 logging.debug('Copy of \'{}\' created at \'{}\''.format(arquivo, pasta_bk))
             elif arquivo.endswith('.mdb'):
-                shutil.copyfile(caminho + '\\' + arquivo, arquivo_bk)
+                shutil.copyfile(caminho_completo, arquivo_bk)
                 logging.debug('Copy \'{}\' created \'{}\''.format(arquivo, pasta_bk))
-
-            # Sai do loop e vai pra a próxima linha/caminho
-            logging.debug('Increasing i by 1')
-            i += 1
             
     except Exception:
         # Se de alguma forma, o if acima nao conseguir pegar algum arquivo repetido
@@ -219,18 +207,15 @@ def copia():
 def isBlocked():
     logging.debug('isBlocked()')
 
-    # Iterador
-    i = 0
-
     # Cria instância do Access
     logging.debug('Creating Access instance')
     access_instance = win32com.client.Dispatch('Access.Application')
     
     # A função que é chamada no main()
-    for arquivo in arquivos:
+    for caminho, arquivo in zip(db_path, arquivos):
 
         # Coloca o caminho completo do arquivo
-        arquivo = db_path[i] + '\\' + arquivo
+        arquivo = caminho + '\\' + arquivo
 
         # Chama a blocked check(file) para testar se o arquivo tem senha/pode ser aberto
         logging.debug('calling blocked_check()')
@@ -239,8 +224,6 @@ def isBlocked():
             # Desvincula a variavel do Access Object
             access_instance = None
 
-        # Próxima pasta
-        i += 1
 
     # Fecha a instância do Access que foi aberta na checagem
     logging.debug('Closing Access instance')
@@ -292,9 +275,6 @@ def blocked_check(file, access_instance):
 
 def compact_repair():
     logging.debug('compact_repair()')
-
-    # Iterador
-    i = 0
     
     # 'Abre' o Access
     logging.debug('Creating Access instance')
@@ -303,13 +283,7 @@ def compact_repair():
     
     # Executa o compact and repair em todos arquivos .accdb
     logging.debug('STARTING .ACCDB CLEANING')
-    for caminho in db_path:
-
-        # .accdb
-        arquivo = arquivos[i]
-
-        # pasta de bk
-        pasta_bk = bk_path[i]
+    for caminho, arquivo, pasta_bk in zip(db_path, arquivos, bk_path):
 
         # Arquivo completo
         file = caminho + '\\' + arquivo
@@ -337,8 +311,6 @@ def compact_repair():
         os.remove(tmp_file)
         logging.debug('Deleted')
 
-        # Proxima linha
-        i += 1
 
     """
     # Executa o compact and repair em todos os arquivos .mdb
@@ -399,28 +371,21 @@ def compact_repair():
 def delete_copies():
     logging.debug('delete_copies()')
 
-    # Iterador
-    i = 0
-
-    # por pasta de backup
-    for caminho in bk_path:
-
-        # nome do arquivo
-        arquivo = arquivos[i]
+    # Cria um (tu, ple) com as listas e itera em todas ao mesmo tempo
+    # Tirando a necessidade de um iterador i
+    for caminho, arquivo, pasta_bk in zip(db_path, arquivos, bk_path):
 
         # caminho completo do arquivo
-        copy = caminho + '\\' + arquivo
+        copia = pasta_bk + '\\' + arquivo
 
         try:
-            logging.debug('Trying to delete \'{}\''.format(copy))
-            os.remove(copy)
+            logging.debug('Trying to delete \'{}\''.format(copia))
+            os.remove(copia)
             logging.debug('Deleted')
         except Exception:
             logging.debug('end of delete_copies()')
             logging.exception('ALGO DEU ERRADO DURANTE A EXCLUSÃO DAS CÓPIAS')
             return False
-
-        i += 1
 
     logging.debug('end of delete_copies()')
     return True
@@ -437,16 +402,12 @@ def delete_copies():
 def zipar():
     logging.debug('zipar()')
 
-    # Iterador
-    i = 0
-    
     # Zipa os arquivos
-    for caminho in db_path:
-        arquivo = arquivos[i]
-        pasta_bk = bk_path[i]
+    for caminho, arquivo, pasta_bk in zip(db_path, arquivos, bk_path):
 
         # caminho completo para o arquivo
         caminho_completo = caminho + '\\' + arquivo
+
         with zipfile.ZipFile("{}\\Backup {} -- {}".format(pasta_bk, arquivo.replace('.accdb', ''),str(datetime.now().date().strftime("%d-%m-%Y"))) + ".zip", 'w', zipfile.ZIP_DEFLATED) as backup:
 
             try:
@@ -462,7 +423,6 @@ def zipar():
                 logging.exception('EXCEPTION OCCURED')
                 return -1
 
-        i += 1
 
     logging.debug('end of zipar()')
     return 0
@@ -525,7 +485,7 @@ def send_mail(assunto, body, log = None, copy_fail = False):
     server = smtplib.SMTP()
     server.set_debuglevel(1)
     try:
-        server.connect('')
+        server.connect()
     except Exception as e:
         print('e:  ' + str(e))
     print('here')
